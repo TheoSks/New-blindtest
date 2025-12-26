@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String
+  avatar        String?
+
+  xp            Int       @default(0)
+  level         Int       @default(1)
+
+  gamesPlayed   Int       @default(0)
+  gamesWon      Int       @default(0)
+  totalCorrect  Int       @default(0)
+  totalAnswers  Int       @default(0)
+  bestStreak    Int       @default(0)
+  currentStreak Int       @default(0)
+  lastPlayedAt  DateTime?
+
+  badges        UserBadge[]
+  gameHistory   GamePlayer[]
+
+  discordId     String?   @unique
+  twitchId      String?   @unique
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([username])
+  @@index([xp])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  description String
+  icon        String
+  category    String
+  rarity      String
+  condition   Json
+  xpReward    Int         @default(0)
+  users       UserBadge[]
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
+  badge      Badge    @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+}
+
+model Game {
+  id          String       @id @default(cuid())
+  roomCode    String
+  hostId      String?
+  status      String       @default("lobby")
+  settings    Json
+
+  currentRound Int         @default(0)
+  totalRounds  Int         @default(15)
+
+  players     GamePlayer[]
+
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([roomCode])
+  @@index([status])
+}
+
+model GamePlayer {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String?
+  guestName String?
+
+  score     Int      @default(0)
+  rank      Int?
+  isHost    Boolean  @default(false)
+
+  game      Game     @relation(fields: [gameId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+
+  @@index([gameId])
+}
+
+model Song {
+  id          String   @id @default(cuid())
+  title       String
+  artist      String
+  album       String?
+  year        Int?
+  genre       String[]
+  duration    Int
+  previewUrl  String
+  coverUrl    String?
+
+  difficulty  String   @default("medium")
+  popularity  Int      @default(0)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([genre])
+  @@index([year])
+}
