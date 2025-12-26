@@ -37,7 +37,7 @@ export default function Game() {
   const [songs] = useState(() => [...MUSIC_LIBRARY].sort(() => Math.random() - 0.5).slice(0, 5));
   const [currentSong, setCurrentSong] = useState<typeof MUSIC_LIBRARY[0] | null>(null);
   const [leaderboard, setLeaderboard] = useState<{ name: string; score: number }[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roundStartTimeRef = useRef<number>(0);
 
   const { isPlaying, setVolume } = useAudio(currentAudioUrl, { autoplay: true });
