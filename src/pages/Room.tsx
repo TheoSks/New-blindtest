@@ -21,7 +21,7 @@ export default function Room() {
 
   const [copied, setCopied] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [isHost, setIsHost] = useState(searchParams.get('host') === 'true');
+  const [isHost] = useState(searchParams.get('host') === 'true');
   const [isJoining, setIsJoining] = useState(true);
 
   const playerName = isAuthenticated ? user?.username : guestName;
