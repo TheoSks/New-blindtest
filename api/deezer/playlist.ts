@@ -23,9 +23,6 @@ interface DeezerPlaylistResponse {
   };
 }
 
-interface DeezerSearchResponse {
-  data: DeezerTrack[];
-}
 
 // Popular Deezer playlist IDs for different genres/moods
 const PLAYLISTS: Record<string, string> = {
@@ -39,29 +36,51 @@ const PLAYLISTS: Record<string, string> = {
   latino: '1116190041', // Top Latino
 };
 
-// French rap artists to search for
-const FRENCH_RAP_SEARCH_TERMS = [
-  'Booba', 'Ninho', 'Jul', 'SCH', 'Damso', 'PNL', 'Nekfeu', 'Orelsan',
-  'Freeze Corleone', 'Gazo', 'PLK', 'Niska', 'Maes', 'Koba LaD', 'Lacrim',
-  'Kaaris', 'Vald', 'Laylow', 'Dinos', 'Leto', 'SDM', 'Ziak', 'Tiakola',
-  'Werenoi', 'Naps', 'Alonzo', 'La Fouine', 'Rohff', 'Gradur', 'Hornet La Frappe'
+// French rap artist IDs on Deezer (verified IDs)
+const FRENCH_RAP_ARTISTS: { name: string; id: number }[] = [
+  { name: 'Booba', id: 544 },
+  { name: 'Ninho', id: 6575813 },
+  { name: 'Jul', id: 5313805 },
+  { name: 'SCH', id: 4932985 },
+  { name: 'Damso', id: 6824757 },
+  { name: 'PNL', id: 4412926 },
+  { name: 'Nekfeu', id: 4261483 },
+  { name: 'Orelsan', id: 50182 },
+  { name: 'Niska', id: 7622383 },
+  { name: 'Maes', id: 9635624 },
+  { name: 'Kaaris', id: 1819753 },
+  { name: 'Vald', id: 5505679 },
+  { name: 'Lacrim', id: 1523614 },
+  { name: 'PLK', id: 9282498 },
+  { name: 'Naps', id: 5266132 },
+  { name: 'Alonzo', id: 419118 },
+  { name: 'La Fouine', id: 1179 },
+  { name: 'Rohff', id: 1087 },
+  { name: 'Gradur', id: 5312302 },
+  { name: 'Soprano', id: 428 },
+  { name: 'Gims', id: 1308916 },
+  { name: 'Koba LaD', id: 11276023 },
+  { name: 'Gazo', id: 55776442 },
+  { name: 'Tiakola', id: 77287382 },
+  { name: 'SDM', id: 8523523 },
 ];
 
-// Search for tracks by a French rap artist
-async function searchFrenchRapTracks(artistName: string): Promise<DeezerTrack[]> {
+interface DeezerTopTracksResponse {
+  data: DeezerTrack[];
+}
+
+// Get top tracks for a French rap artist by ID
+async function getArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
   try {
     const response = await fetch(
-      `https://api.deezer.com/search?q=artist:"${encodeURIComponent(artistName)}"&limit=10`
+      `https://api.deezer.com/artist/${artistId}/top?limit=10`
     );
     if (!response.ok) return [];
-    const data: DeezerSearchResponse = await response.json();
+    const data: DeezerTopTracksResponse = await response.json();
     if (!data.data) return [];
 
-    // Only keep tracks from this specific artist
-    return data.data.filter(track =>
-      track.preview &&
-      track.artist.name.toLowerCase().includes(artistName.toLowerCase())
-    );
+    // Only keep tracks with preview URL
+    return data.data.filter(track => track.preview);
   } catch {
     return [];
   }
@@ -81,18 +100,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const genreKey = typeof genre === 'string' ? genre.toLowerCase() : 'hits';
 
   try {
-    // Special handling for French Rap - search for specific artists
+    // Special handling for French Rap - get top tracks from verified French rap artists
     if (genreKey === 'rapfr') {
-      // Pick random artists to search
-      const shuffledArtists = [...FRENCH_RAP_SEARCH_TERMS].sort(() => Math.random() - 0.5);
-      const selectedArtists = shuffledArtists.slice(0, 15);
+      // Pick random artists
+      const shuffledArtists = [...FRENCH_RAP_ARTISTS].sort(() => Math.random() - 0.5);
+      const selectedArtists = shuffledArtists.slice(0, 12);
 
-      // Search for tracks from each artist in parallel
-      const searchPromises = selectedArtists.map(artist => searchFrenchRapTracks(artist));
-      const searchResults = await Promise.all(searchPromises);
+      // Get top tracks from each artist in parallel
+      const trackPromises = selectedArtists.map(artist => getArtistTopTracks(artist.id));
+      const trackResults = await Promise.all(trackPromises);
 
       // Combine all tracks
-      const allTracks = searchResults.flat();
+      const allTracks = trackResults.flat();
 
       // Remove duplicates by track ID
       const seenIds = new Set<number>();
@@ -102,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return true;
       });
 
-      console.log(`Rap FR: Found ${uniqueTracks.length} unique tracks`);
+      console.log(`Rap FR: Found ${uniqueTracks.length} unique tracks from ${selectedArtists.length} artists`);
 
       if (uniqueTracks.length < 5) {
         return res.status(200).json({
