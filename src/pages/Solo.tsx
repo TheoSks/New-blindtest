@@ -70,26 +70,46 @@ export default function Solo() {
     setVolume(isMuted ? 0 : 1);
   }, [isMuted, setVolume]);
 
-  // Generate 4 answer options (1 correct + 3 wrong)
+  // Generate 4 answer options (1 correct + 3 wrong) - MORE COMPLEX
   const generateAnswerOptions = useCallback((correctSong: DeezerTrack, allSongs: DeezerTrack[]): AnswerOption[] => {
+    // Only show title (not artist) to make it harder
     const correctAnswer: AnswerOption = {
       id: correctSong.id,
-      text: `${correctSong.title} - ${correctSong.artist}`,
+      text: correctSong.title,
       isCorrect: true,
     };
 
-    // Get wrong answers from other songs
-    const wrongSongs = allSongs
-      .filter(s => s.id !== correctSong.id && s.artist !== correctSong.artist)
-      .slice(0, 20); // Take more to have variety
+    // Strategy: Mix wrong answers from SAME artist + different artists
+    // This prevents guessing just by recognizing the voice
+    const sameArtistSongs = allSongs.filter(
+      s => s.id !== correctSong.id && s.artist === correctSong.artist
+    );
+    const differentArtistSongs = allSongs.filter(
+      s => s.id !== correctSong.id && s.artist !== correctSong.artist
+    );
 
-    const shuffledWrong = shuffleArray(wrongSongs).slice(0, 3);
+    const wrongAnswers: AnswerOption[] = [];
 
-    const wrongAnswers: AnswerOption[] = shuffledWrong.map(song => ({
-      id: song.id,
-      text: `${song.title} - ${song.artist}`,
-      isCorrect: false,
-    }));
+    // Add 1-2 songs from the same artist if available (makes it tricky!)
+    const shuffledSameArtist = shuffleArray(sameArtistSongs);
+    const sameArtistCount = Math.min(shuffledSameArtist.length, Math.random() > 0.5 ? 2 : 1);
+    for (let i = 0; i < sameArtistCount && wrongAnswers.length < 3; i++) {
+      wrongAnswers.push({
+        id: shuffledSameArtist[i].id,
+        text: shuffledSameArtist[i].title,
+        isCorrect: false,
+      });
+    }
+
+    // Fill remaining slots with different artists
+    const shuffledDifferent = shuffleArray(differentArtistSongs);
+    for (let i = 0; wrongAnswers.length < 3 && i < shuffledDifferent.length; i++) {
+      wrongAnswers.push({
+        id: shuffledDifferent[i].id,
+        text: shuffledDifferent[i].title,
+        isCorrect: false,
+      });
+    }
 
     // Combine and shuffle all options
     return shuffleArray([correctAnswer, ...wrongAnswers]);
