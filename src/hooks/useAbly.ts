@@ -8,35 +8,58 @@ export function useAbly() {
   const { guestName } = useAuthStore();
   const clientRef = useRef<Ably.Realtime | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const clientId = guestName || `guest-${Date.now()}`;
 
   useEffect(() => {
     if (!ABLY_API_KEY) {
-      console.warn('Ably API key not configured');
+      console.error('❌ Ably API key not configured - VITE_ABLY_API_KEY is missing');
+      setConnectionError('Clé API Ably non configurée');
       return;
     }
 
-    const client = new Ably.Realtime({
-      key: ABLY_API_KEY,
-      clientId,
-    });
+    console.log('🔌 Connecting to Ably...');
 
-    client.connection.on('connected', () => {
-      console.log('Ably connected');
-      setIsConnected(true);
-    });
+    try {
+      const client = new Ably.Realtime({
+        key: ABLY_API_KEY,
+        clientId,
+        autoConnect: true,
+      });
 
-    client.connection.on('disconnected', () => {
-      console.log('Ably disconnected');
-      setIsConnected(false);
-    });
+      client.connection.on('connected', () => {
+        console.log('✅ Ably connected successfully');
+        setIsConnected(true);
+        setConnectionError(null);
+      });
 
-    clientRef.current = client;
+      client.connection.on('disconnected', () => {
+        console.log('⚠️ Ably disconnected');
+        setIsConnected(false);
+      });
 
-    return () => {
-      client.close();
-    };
+      client.connection.on('failed', (stateChange) => {
+        console.error('❌ Ably connection failed:', stateChange.reason);
+        setConnectionError(stateChange.reason?.message || 'Connection failed');
+        setIsConnected(false);
+      });
+
+      client.connection.on('suspended', () => {
+        console.warn('⏸️ Ably connection suspended');
+        setIsConnected(false);
+      });
+
+      clientRef.current = client;
+
+      return () => {
+        console.log('🔌 Closing Ably connection');
+        client.close();
+      };
+    } catch (error) {
+      console.error('❌ Failed to initialize Ably:', error);
+      setConnectionError('Erreur initialisation Ably');
+    }
   }, [clientId]);
 
   const getChannel = useCallback((channelName: string) => {
@@ -119,6 +142,7 @@ export function useAbly() {
   return {
     client: clientRef.current,
     isConnected,
+    connectionError,
     clientId,
     getChannel,
     publish,

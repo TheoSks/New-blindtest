@@ -17,13 +17,13 @@ export default function Room() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { guestName } = useAuthStore();
-  const { clientId, publish, subscribe, enterPresence, leavePresence, subscribePresence, getPresence, isConnected } = useAbly();
+  const { clientId, publish, subscribe, enterPresence, leavePresence, subscribePresence, getPresence, isConnected, connectionError } = useAbly();
 
   const [copied, setCopied] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost] = useState(searchParams.get('host') === 'true');
   const [isJoining, setIsJoining] = useState(true);
-  const [connectionError, setConnectionError] = useState(false);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
 
   const playerName = guestName;
   const channelName = `room:${code}`;
@@ -37,7 +37,7 @@ export default function Room() {
     // Timeout for connection - don't wait forever
     const timeout = setTimeout(() => {
       if (isJoining) {
-        setConnectionError(true);
+        setHasTimedOut(true);
         setIsJoining(false);
         // Add self as player anyway
         setPlayers([{
@@ -79,7 +79,7 @@ export default function Room() {
 
       setPlayers(playersList);
       setIsJoining(false);
-      setConnectionError(false);
+      setHasTimedOut(false);
     }).catch(() => {
       // If presence fails, just add self
       setPlayers([{
@@ -181,17 +181,19 @@ export default function Room() {
           </Button>
         </div>
 
-        {connectionError && (
+        {(connectionError || hasTimedOut || !isConnected) && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-4 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-xl flex items-center gap-3"
           >
             <AlertCircle className="w-5 h-5 text-yellow-500" />
-            <p className="text-yellow-200 text-sm">
-              Mode hors-ligne : le multijoueur temps reel n'est pas disponible.
-              Utilisez le Mode Solo pour jouer.
-            </p>
+            <div className="text-yellow-200 text-sm">
+              <p className="font-semibold">Mode hors-ligne</p>
+              <p>Le multijoueur temps reel n'est pas connecte.</p>
+              {connectionError && <p className="text-yellow-300 text-xs mt-1">Erreur: {connectionError}</p>}
+              {hasTimedOut && <p className="text-yellow-300 text-xs mt-1">Connexion expirée</p>}
+            </div>
           </motion.div>
         )}
 
