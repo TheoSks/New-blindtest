@@ -37,28 +37,33 @@ const PLAYLISTS: Record<string, string> = {
   hits: '1313621735', // Top Hits
   oldies: '1111142181', // Top Oldies
   latino: '1116190041', // Top Latino
-  // Rap FR - Multiple official French rap playlists
-  rapfr: '1109890291', // Rap FR officiel Deezer
 };
 
-// Backup French rap playlist IDs in case the main one fails
-const RAPFR_BACKUP_PLAYLISTS = [
-  '1109890291',  // Rap FR
-  '6287534604',  // Rap Français 2024
-  '1306931615',  // 100% Rap Français
-  '4403076402',  // Rap FR Classiques
+// French rap artists to search for
+const FRENCH_RAP_SEARCH_TERMS = [
+  'Booba', 'Ninho', 'Jul', 'SCH', 'Damso', 'PNL', 'Nekfeu', 'Orelsan',
+  'Freeze Corleone', 'Gazo', 'PLK', 'Niska', 'Maes', 'Koba LaD', 'Lacrim',
+  'Kaaris', 'Vald', 'Laylow', 'Dinos', 'Leto', 'SDM', 'Ziak', 'Tiakola',
+  'Werenoi', 'Naps', 'Alonzo', 'La Fouine', 'Rohff', 'Gradur', 'Hornet La Frappe'
 ];
 
-// Helper function to fetch a playlist by ID
-async function fetchPlaylist(playlistId: string): Promise<DeezerTrack[] | null> {
+// Search for tracks by a French rap artist
+async function searchFrenchRapTracks(artistName: string): Promise<DeezerTrack[]> {
   try {
-    const response = await fetch(`https://api.deezer.com/playlist/${playlistId}`);
-    if (!response.ok) return null;
-    const data: DeezerPlaylistResponse = await response.json();
-    if (!data.tracks?.data) return null;
-    return data.tracks.data.filter(track => track.preview);
+    const response = await fetch(
+      `https://api.deezer.com/search?q=artist:"${encodeURIComponent(artistName)}"&limit=10`
+    );
+    if (!response.ok) return [];
+    const data: DeezerSearchResponse = await response.json();
+    if (!data.data) return [];
+
+    // Only keep tracks from this specific artist
+    return data.data.filter(track =>
+      track.preview &&
+      track.artist.name.toLowerCase().includes(artistName.toLowerCase())
+    );
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -76,21 +81,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const genreKey = typeof genre === 'string' ? genre.toLowerCase() : 'hits';
 
   try {
-    // Special handling for French Rap - try multiple playlists
+    // Special handling for French Rap - search for specific artists
     if (genreKey === 'rapfr') {
-      let tracksWithPreview: DeezerTrack[] = [];
+      // Pick random artists to search
+      const shuffledArtists = [...FRENCH_RAP_SEARCH_TERMS].sort(() => Math.random() - 0.5);
+      const selectedArtists = shuffledArtists.slice(0, 15);
 
-      // Try each backup playlist until we get enough tracks
-      for (const playlistId of RAPFR_BACKUP_PLAYLISTS) {
-        const tracks = await fetchPlaylist(playlistId);
-        if (tracks && tracks.length > 0) {
-          tracksWithPreview = tracks;
-          console.log(`Rap FR: Found ${tracks.length} tracks from playlist ${playlistId}`);
-          break;
-        }
-      }
+      // Search for tracks from each artist in parallel
+      const searchPromises = selectedArtists.map(artist => searchFrenchRapTracks(artist));
+      const searchResults = await Promise.all(searchPromises);
 
-      if (tracksWithPreview.length < 5) {
+      // Combine all tracks
+      const allTracks = searchResults.flat();
+
+      // Remove duplicates by track ID
+      const seenIds = new Set<number>();
+      const uniqueTracks = allTracks.filter(track => {
+        if (seenIds.has(track.id)) return false;
+        seenIds.add(track.id);
+        return true;
+      });
+
+      console.log(`Rap FR: Found ${uniqueTracks.length} unique tracks`);
+
+      if (uniqueTracks.length < 5) {
         return res.status(200).json({
           success: false,
           error: 'Not enough French rap tracks found',
@@ -99,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Shuffle and transform
-      const shuffledTracks = [...tracksWithPreview].sort(() => Math.random() - 0.5);
+      const shuffledTracks = [...uniqueTracks].sort(() => Math.random() - 0.5);
       const tracks = shuffledTracks.map(track => ({
         id: track.id.toString(),
         title: track.title,
