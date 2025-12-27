@@ -90,9 +90,9 @@ export default function Solo() {
 
     const wrongAnswers: AnswerOption[] = [];
 
-    // Add 1-2 songs from the same artist if available (makes it tricky!)
+    // ALWAYS add 1-2 songs from the same artist if available
     const shuffledSameArtist = shuffleArray(sameArtistSongs);
-    const sameArtistCount = Math.min(shuffledSameArtist.length, Math.random() > 0.5 ? 2 : 1);
+    const sameArtistCount = Math.min(shuffledSameArtist.length, 2); // Always try to add 2
     for (let i = 0; i < sameArtistCount && wrongAnswers.length < 3; i++) {
       wrongAnswers.push({
         id: shuffledSameArtist[i].id,
