@@ -23,6 +23,9 @@ interface DeezerPlaylistResponse {
   };
 }
 
+interface DeezerTopTracksResponse {
+  data: DeezerTrack[];
+}
 
 // Popular Deezer playlist IDs for different genres/moods
 const PLAYLISTS: Record<string, string> = {
@@ -36,54 +39,146 @@ const PLAYLISTS: Record<string, string> = {
   latino: '1116190041', // Top Latino
 };
 
-// French rap artist IDs on Deezer (verified IDs)
-const FRENCH_RAP_ARTISTS: { name: string; id: number }[] = [
-  { name: 'Booba', id: 544 },
-  { name: 'Ninho', id: 6575813 },
-  { name: 'Jul', id: 5313805 },
-  { name: 'SCH', id: 4932985 },
-  { name: 'Damso', id: 6824757 },
-  { name: 'PNL', id: 4412926 },
-  { name: 'Nekfeu', id: 4261483 },
-  { name: 'Orelsan', id: 50182 },
-  { name: 'Niska', id: 7622383 },
-  { name: 'Maes', id: 9635624 },
-  { name: 'Kaaris', id: 1819753 },
-  { name: 'Vald', id: 5505679 },
-  { name: 'Lacrim', id: 1523614 },
-  { name: 'PLK', id: 9282498 },
-  { name: 'Naps', id: 5266132 },
-  { name: 'Alonzo', id: 419118 },
-  { name: 'La Fouine', id: 1179 },
-  { name: 'Rohff', id: 1087 },
-  { name: 'Gradur', id: 5312302 },
-  { name: 'Soprano', id: 428 },
-  { name: 'Gims', id: 1308916 },
-  { name: 'Koba LaD', id: 11276023 },
-  { name: 'Gazo', id: 55776442 },
-  { name: 'Tiakola', id: 77287382 },
-  { name: 'SDM', id: 8523523 },
-];
+// ============================================================================
+// FRENCH RAP ARTISTS DATABASE - Verified Deezer Artist IDs
+// Only tracks from these artists will be included in "Rap FR" category
+// ============================================================================
+const FRENCH_RAP_ARTISTS_DB: Map<number, string> = new Map([
+  // Legends / Old School
+  [544, 'Booba'],
+  [1087, 'Rohff'],
+  [1179, 'La Fouine'],
+  [428, 'Soprano'],
+  [892, 'IAM'],
+  [1434, 'NTM'],
+  [1225, 'MC Solaar'],
+  [1183, 'Sniper'],
+  [1175, 'Sinik'],
+  [1194, 'Sefyu'],
+  [1182, 'Sexion d\'Assaut'],
 
-interface DeezerTopTracksResponse {
-  data: DeezerTrack[];
+  // 2010s Wave
+  [1308916, 'Gims'],
+  [50182, 'Orelsan'],
+  [1819753, 'Kaaris'],
+  [1523614, 'Lacrim'],
+  [5312302, 'Gradur'],
+  [4261483, 'Nekfeu'],
+  [419118, 'Alonzo'],
+  [5505679, 'Vald'],
+  [4412926, 'PNL'],
+  [5266132, 'Naps'],
+  [5313805, 'Jul'],
+
+  // New Generation
+  [6575813, 'Ninho'],
+  [4932985, 'SCH'],
+  [6824757, 'Damso'],
+  [7622383, 'Niska'],
+  [9635624, 'Maes'],
+  [9282498, 'PLK'],
+  [11276023, 'Koba LaD'],
+  [8523523, 'SDM'],
+  [13988498, 'Dinos'],
+  [13519, 'Lomepal'],
+  [11278792, 'Laylow'],
+  [66361832, 'Freeze Corleone'],
+  [55776442, 'Gazo'],
+  [77287382, 'Tiakola'],
+  [14890617, 'Leto'],
+  [62531962, 'Werenoi'],
+  [103029382, 'Ziak'],
+
+  // Other popular French rappers
+  [4749498, 'Dosseh'],
+  [267166, 'Rim\'K'],
+  [1091, 'Kerry James'],
+  [404958, 'Youssoupha'],
+  [4737958, 'Sofiane'],
+  [5347738, 'Dadju'],
+  [12077756, 'Djadja & Dinaz'],
+  [10531896, 'Hornet La Frappe'],
+  [5312420, 'Kalash Criminel'],
+  [7524195, 'MHD'],
+  [10933498, 'Hamza'],
+  [1433942, 'Bigflo & Oli'],
+  [13113874, 'Heuss L\'enfoiré'],
+  [4297753, 'Disiz'],
+  [4780, 'Oxmo Puccino'],
+  [5575299, 'Georgio'],
+  [9515690, 'Larry'],
+  [71188372, 'Guy2Bezbar'],
+  [63714502, 'Zamdane'],
+  [5298632, 'Alkpote'],
+  [141584442, 'Rsko'],
+  [4410483, 'Alpha Wann'],
+  [4410553, 'Jazzy Bazz'],
+  [175862, 'Kery James'],
+]);
+
+// Get set of valid artist IDs for quick lookup
+const VALID_FRENCH_RAP_ARTIST_IDS = new Set(FRENCH_RAP_ARTISTS_DB.keys());
+
+// Get array of artist IDs for iteration
+const FRENCH_RAP_ARTIST_IDS = Array.from(FRENCH_RAP_ARTISTS_DB.keys());
+
+/**
+ * Verify if a track is from a French rap artist
+ * Only returns true if the PRIMARY artist is in our verified database
+ */
+function isVerifiedFrenchRapTrack(track: DeezerTrack): boolean {
+  return VALID_FRENCH_RAP_ARTIST_IDS.has(track.artist.id);
 }
 
-// Get top tracks for a French rap artist by ID
+/**
+ * Get top tracks for a specific artist by their Deezer ID
+ */
 async function getArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
   try {
     const response = await fetch(
-      `https://api.deezer.com/artist/${artistId}/top?limit=10`
+      `https://api.deezer.com/artist/${artistId}/top?limit=15`
     );
     if (!response.ok) return [];
+
     const data: DeezerTopTracksResponse = await response.json();
     if (!data.data) return [];
 
-    // Only keep tracks with preview URL
-    return data.data.filter(track => track.preview);
+    // Double verification: only keep tracks with preview AND from verified artist
+    return data.data.filter(track =>
+      track.preview &&
+      isVerifiedFrenchRapTrack(track)
+    );
   } catch {
     return [];
   }
+}
+
+/**
+ * Fetch French rap tracks using multiple strategies for robustness
+ */
+async function fetchFrenchRapTracks(): Promise<DeezerTrack[]> {
+  // Strategy 1: Get top tracks from random selection of verified artists
+  const shuffledIds = [...FRENCH_RAP_ARTIST_IDS].sort(() => Math.random() - 0.5);
+  const selectedIds = shuffledIds.slice(0, 15); // Get 15 random artists
+
+  const trackPromises = selectedIds.map(id => getArtistTopTracks(id));
+  const results = await Promise.all(trackPromises);
+
+  // Combine and deduplicate
+  const allTracks = results.flat();
+  const seenIds = new Set<number>();
+  const uniqueTracks: DeezerTrack[] = [];
+
+  for (const track of allTracks) {
+    if (!seenIds.has(track.id)) {
+      seenIds.add(track.id);
+      uniqueTracks.push(track);
+    }
+  }
+
+  console.log(`[Rap FR] Fetched ${uniqueTracks.length} verified French rap tracks from ${selectedIds.length} artists`);
+
+  return uniqueTracks;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -100,30 +195,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const genreKey = typeof genre === 'string' ? genre.toLowerCase() : 'hits';
 
   try {
-    // Special handling for French Rap - get top tracks from verified French rap artists
+    // Special handling for French Rap
     if (genreKey === 'rapfr') {
-      // Pick random artists
-      const shuffledArtists = [...FRENCH_RAP_ARTISTS].sort(() => Math.random() - 0.5);
-      const selectedArtists = shuffledArtists.slice(0, 12);
+      const frenchRapTracks = await fetchFrenchRapTracks();
 
-      // Get top tracks from each artist in parallel
-      const trackPromises = selectedArtists.map(artist => getArtistTopTracks(artist.id));
-      const trackResults = await Promise.all(trackPromises);
-
-      // Combine all tracks
-      const allTracks = trackResults.flat();
-
-      // Remove duplicates by track ID
-      const seenIds = new Set<number>();
-      const uniqueTracks = allTracks.filter(track => {
-        if (seenIds.has(track.id)) return false;
-        seenIds.add(track.id);
-        return true;
-      });
-
-      console.log(`Rap FR: Found ${uniqueTracks.length} unique tracks from ${selectedArtists.length} artists`);
-
-      if (uniqueTracks.length < 5) {
+      if (frenchRapTracks.length < 5) {
+        console.error(`[Rap FR] Not enough tracks: ${frenchRapTracks.length}`);
         return res.status(200).json({
           success: false,
           error: 'Not enough French rap tracks found',
@@ -131,8 +208,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // Shuffle and transform
-      const shuffledTracks = [...uniqueTracks].sort(() => Math.random() - 0.5);
+      // Shuffle and transform to our format
+      const shuffledTracks = [...frenchRapTracks].sort(() => Math.random() - 0.5);
       const tracks = shuffledTracks.map(track => ({
         id: track.id.toString(),
         title: track.title,
@@ -143,14 +220,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({
         success: true,
-        playlist: 'Rap FR',
+        playlist: 'Rap Français',
         tracks,
+        meta: {
+          totalArtists: FRENCH_RAP_ARTISTS_DB.size,
+          tracksReturned: tracks.length,
+        },
       });
     }
 
     // Regular playlist handling for other genres
     const playlistId = PLAYLISTS[genreKey] || PLAYLISTS.hits;
-
     const response = await fetch(`https://api.deezer.com/playlist/${playlistId}`);
 
     if (!response.ok) {
