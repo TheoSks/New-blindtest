@@ -89,21 +89,30 @@ const FRENCH_RAP_ARTISTS: { name: string; id: number }[] = [
 ];
 
 // Fetch top tracks for a French rap artist by ID
-async function fetchArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
+async function fetchArtistTopTracks(artistId: number, artistName: string): Promise<DeezerTrack[]> {
   try {
     const response = await fetch(
-      `https://api.deezer.com/artist/${artistId}/top?limit=20`
+      `https://api.deezer.com/artist/${artistId}/top?limit=25`
     );
     if (!response.ok) return [];
     const data: DeezerSearchResponse = await response.json();
 
-    // STRICT FILTER: Only include tracks where this artist is THE main artist (exact ID match)
-    const tracks = (data.data || []).filter(track =>
-      track.artist.id === artistId
-    );
+    if (!data.data) return [];
+
+    // Filter: only keep tracks where the artist name matches (case insensitive)
+    // This ensures we get tracks from French rap artists only
+    const artistNameLower = artistName.toLowerCase();
+    const tracks = data.data.filter(track => {
+      const trackArtistLower = track.artist.name.toLowerCase();
+      // Check if the artist name matches or is contained
+      return trackArtistLower === artistNameLower ||
+             trackArtistLower.includes(artistNameLower) ||
+             artistNameLower.includes(trackArtistLower);
+    });
 
     return tracks;
-  } catch {
+  } catch (err) {
+    console.error(`Error fetching tracks for artist ${artistId}:`, err);
     return [];
   }
 }
@@ -124,18 +133,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Special handling for French Rap
     if (genreKey === 'rapfr') {
-      // Shuffle artists and pick random ones
+      // Shuffle artists and pick more to ensure we get enough tracks
       const shuffledArtists = [...FRENCH_RAP_ARTISTS].sort(() => Math.random() - 0.5);
-      const selectedArtists = shuffledArtists.slice(0, 12);
+      const selectedArtists = shuffledArtists.slice(0, 20);
 
-      // Fetch tracks from multiple artists in parallel using their IDs
+      // Fetch tracks from multiple artists in parallel using their IDs and names
       const artistTracksPromises = selectedArtists.map(artist =>
-        fetchArtistTopTracks(artist.id)
+        fetchArtistTopTracks(artist.id, artist.name)
       );
       const artistTracksResults = await Promise.all(artistTracksPromises);
 
       // Combine all tracks
       const allTracks = artistTracksResults.flat();
+
+      console.log(`Rap FR: Found ${allTracks.length} total tracks from ${selectedArtists.length} artists`);
 
       // Filter tracks with preview and remove duplicates
       const seenIds = new Set<number>();
@@ -144,6 +155,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         seenIds.add(track.id);
         return true;
       });
+
+      console.log(`Rap FR: ${uniqueTracks.length} unique tracks with previews`);
+
+      // If we don't have enough tracks, return error
+      if (uniqueTracks.length < 5) {
+        console.error('Rap FR: Not enough tracks found');
+        return res.status(200).json({
+          success: false,
+          error: 'Not enough French rap tracks found',
+          tracks: [],
+        });
+      }
 
       // Shuffle and transform
       const shuffledTracks = uniqueTracks.sort(() => Math.random() - 0.5);
