@@ -1,21 +1,33 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, Send, Trophy, Clock, CheckCircle, XCircle, Home, Star, Zap, Music, Loader2 } from 'lucide-react';
-import { Button, Input, Card } from '@/components/ui';
+import { motion } from 'framer-motion';
+import { Volume2, VolumeX, Trophy, Clock, CheckCircle, XCircle, Home, Star, Zap, Music, Loader2 } from 'lucide-react';
+import { Button, Card } from '@/components/ui';
 import { useAuthStore, xpForNextLevel, xpForLevel } from '@/stores/authStore';
 import { useAudio } from '@/hooks/useAudio';
 import { useDeezer, DeezerTrack } from '@/hooks/useDeezer';
-
-function normalizeString(str: string): string {
-  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
-}
 
 const TOTAL_ROUNDS = 5;
 const TIME_PER_ROUND = 30;
 
 // Available genres for variety
-const GENRES = ['pop', 'rock', 'hiphop', 'french', 'hits'];
+const GENRES = ['rapfr', 'pop', 'rock', 'hiphop', 'french', 'hits'];
+
+interface AnswerOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+// Shuffle array helper
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 export default function Solo() {
   const navigate = useNavigate();
@@ -27,15 +39,17 @@ export default function Solo() {
   const [score, setScore] = useState(0);
   const [correctAnswers, setCorrectAnswers] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(TIME_PER_ROUND);
-  const [answer, setAnswer] = useState('');
   const [hasAnswered, setHasAnswered] = useState(false);
   const [lastResult, setLastResult] = useState<{ correct: boolean; points: number } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [songs, setSongs] = useState<DeezerTrack[]>([]);
+  const [allTracks, setAllTracks] = useState<DeezerTrack[]>([]); // For generating wrong answers
   const [currentSong, setCurrentSong] = useState<DeezerTrack | null>(null);
+  const [answerOptions, setAnswerOptions] = useState<AnswerOption[]>([]);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [xpEarned, setXpEarned] = useState(0);
   const [leveledUp, setLeveledUp] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState<string>('hits');
+  const [selectedGenre, setSelectedGenre] = useState<string>('rapfr');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roundStartTimeRef = useRef<number>(0);
@@ -56,6 +70,31 @@ export default function Solo() {
     setVolume(isMuted ? 0 : 1);
   }, [isMuted, setVolume]);
 
+  // Generate 4 answer options (1 correct + 3 wrong)
+  const generateAnswerOptions = useCallback((correctSong: DeezerTrack, allSongs: DeezerTrack[]): AnswerOption[] => {
+    const correctAnswer: AnswerOption = {
+      id: correctSong.id,
+      text: `${correctSong.title} - ${correctSong.artist}`,
+      isCorrect: true,
+    };
+
+    // Get wrong answers from other songs
+    const wrongSongs = allSongs
+      .filter(s => s.id !== correctSong.id && s.artist !== correctSong.artist)
+      .slice(0, 20); // Take more to have variety
+
+    const shuffledWrong = shuffleArray(wrongSongs).slice(0, 3);
+
+    const wrongAnswers: AnswerOption[] = shuffledWrong.map(song => ({
+      id: song.id,
+      text: `${song.title} - ${song.artist}`,
+      isCorrect: false,
+    }));
+
+    // Combine and shuffle all options
+    return shuffleArray([correctAnswer, ...wrongAnswers]);
+  }, []);
+
   const startGame = useCallback(async () => {
     setGameState('loading');
     setScore(0);
@@ -65,24 +104,28 @@ export default function Solo() {
     previousLevel.current = stats.level;
     resetStreak();
 
-    // Fetch tracks from Deezer
-    const tracks = await getRandomTracks(TOTAL_ROUNDS, selectedGenre);
+    // Fetch more tracks from Deezer (for wrong answers pool)
+    const tracks = await getRandomTracks(30, selectedGenre);
 
-    if (tracks.length === 0) {
-      // If Deezer fails, show error
+    if (tracks.length < 4) {
+      // If Deezer fails or not enough tracks, show error
       setGameState('ready');
       return;
     }
 
-    setSongs(tracks);
+    // Select songs for the game
+    const gameSongs = tracks.slice(0, TOTAL_ROUNDS);
+    setSongs(gameSongs);
+    setAllTracks(tracks);
     setGameState('playing');
     setCurrentRound(1);
 
     // Start first round with fetched tracks
-    const song = tracks[0];
+    const song = gameSongs[0];
     setCurrentSong(song);
+    setAnswerOptions(generateAnswerOptions(song, tracks));
+    setSelectedAnswer(null);
     setTimeRemaining(TIME_PER_ROUND);
-    setAnswer('');
     setHasAnswered(false);
     setLastResult(null);
     roundStartTimeRef.current = Date.now();
@@ -98,13 +141,14 @@ export default function Solo() {
         return prev - 1;
       });
     }, 1000);
-  }, [stats.level, resetStreak, getRandomTracks, selectedGenre]);
+  }, [stats.level, resetStreak, getRandomTracks, selectedGenre, generateAnswerOptions]);
 
   const startRound = useCallback((roundIndex: number) => {
     const song = songs[roundIndex];
     setCurrentSong(song);
+    setAnswerOptions(generateAnswerOptions(song, allTracks));
+    setSelectedAnswer(null);
     setTimeRemaining(TIME_PER_ROUND);
-    setAnswer('');
     setHasAnswered(false);
     setLastResult(null);
     roundStartTimeRef.current = Date.now();
@@ -120,7 +164,7 @@ export default function Solo() {
         return prev - 1;
       });
     }, 1000);
-  }, [songs]);
+  }, [songs, allTracks, generateAnswerOptions]);
 
   const handleTimeUp = useCallback(() => {
     if (!hasAnswered) {
@@ -166,33 +210,21 @@ export default function Solo() {
     setGameState('finished');
   }, [correctAnswers, score, addXp, incrementGamesPlayed, incrementCorrectAnswers, updateBestScore, stats.level]);
 
-  const handleSubmitAnswer = useCallback(() => {
-    if (!answer.trim() || hasAnswered || !currentSong) return;
+  const handleSelectAnswer = useCallback((option: AnswerOption) => {
+    if (hasAnswered || !currentSong) return;
 
     if (timerRef.current) clearInterval(timerRef.current);
 
+    setSelectedAnswer(option.id);
+
     const responseTime = Date.now() - roundStartTimeRef.current;
-    const normalizedAnswer = normalizeString(answer);
-    const normalizedTitle = normalizeString(currentSong.title);
-    const normalizedArtist = normalizeString(currentSong.artist);
-
-    const foundTitle = normalizedAnswer.includes(normalizedTitle) || normalizedTitle.includes(normalizedAnswer);
-    const foundArtist = normalizedAnswer.includes(normalizedArtist) || normalizedArtist.includes(normalizedAnswer);
-
-    let points = 0;
-    let correct = false;
-
     const timeBonus = Math.max(0, Math.floor((1 - responseTime / (TIME_PER_ROUND * 1000)) * 500));
 
-    if (foundTitle && foundArtist) {
-      points = 1000 + timeBonus;
-      correct = true;
-    } else if (foundTitle || foundArtist) {
-      points = 500 + Math.floor(timeBonus / 2);
-      correct = true;
-    }
+    let points = 0;
+    const correct = option.isCorrect;
 
     if (correct) {
+      points = 1000 + timeBonus;
       setCorrectAnswers((prev) => prev + 1);
       updateStreak(true);
     } else {
@@ -203,14 +235,11 @@ export default function Solo() {
     setLastResult({ correct, points });
     setHasAnswered(true);
     showResult();
-  }, [answer, hasAnswered, currentSong, updateStreak, showResult]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSubmitAnswer();
-  };
+  }, [hasAnswered, currentSong, updateStreak, showResult]);
 
   // Genre labels in French
   const genreLabels: Record<string, string> = {
+    rapfr: 'Rap FR',
     pop: 'Pop',
     rock: 'Rock',
     hiphop: 'Hip-Hop',
@@ -500,23 +529,21 @@ export default function Solo() {
           </div>
         </div>
 
-        {/* Answer input */}
-        <AnimatePresence mode="wait">
+        {/* Answer options */}
+        <div className="w-full max-w-lg px-4">
           {hasAnswered ? (
             <motion.div
-              key="result"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
               className="text-center"
             >
               {lastResult?.correct ? (
-                <div className="flex items-center gap-2 text-green-500">
+                <div className="flex items-center justify-center gap-2 text-green-500">
                   <CheckCircle className="w-8 h-8" />
                   <span className="text-2xl font-bold">+{lastResult.points} pts !</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 text-red-500">
+                <div className="flex items-center justify-center gap-2 text-red-500">
                   <XCircle className="w-8 h-8" />
                   <span className="text-xl">Mauvaise reponse</span>
                 </div>
@@ -524,29 +551,35 @@ export default function Solo() {
             </motion.div>
           ) : (
             <motion.div
-              key="input"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="w-full max-w-md"
+              className="grid grid-cols-1 gap-3"
             >
-              <div className="flex gap-2">
-                <Input
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Titre et/ou Artiste..."
-                  autoFocus
-                  className="flex-1"
-                />
-                <Button onClick={handleSubmitAnswer} disabled={!answer.trim()}>
-                  <Send className="w-5 h-5" />
-                </Button>
-              </div>
-              <p className="text-center text-neutral-500 text-sm mt-2">Appuie sur Entree pour valider</p>
+              {answerOptions.map((option, index) => (
+                <motion.button
+                  key={option.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  onClick={() => handleSelectAnswer(option)}
+                  disabled={hasAnswered}
+                  className={`w-full p-4 rounded-xl text-left font-medium transition-all ${
+                    selectedAnswer === option.id
+                      ? option.isCorrect
+                        ? 'bg-green-500 text-white'
+                        : 'bg-red-500 text-white'
+                      : hasAnswered && option.isCorrect
+                      ? 'bg-green-500/50 text-white'
+                      : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+                >
+                  <span className="text-primary-400 font-bold mr-3">{String.fromCharCode(65 + index)}.</span>
+                  {option.text}
+                </motion.button>
+              ))}
             </motion.div>
           )}
-        </AnimatePresence>
+        </div>
       </div>
     </div>
   );

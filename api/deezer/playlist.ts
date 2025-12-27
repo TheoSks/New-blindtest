@@ -33,6 +33,7 @@ const PLAYLISTS = {
   hits: '1313621735', // Top Hits
   oldies: '1111142181', // Top Oldies
   latino: '1116190041', // Top Latino
+  rapfr: '1996494362', // Rap FR - French Rap playlist
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
