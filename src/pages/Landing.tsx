@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Music, Users, Trophy, Zap, ArrowRight } from 'lucide-react';
+import { Music, Users, Trophy, Zap, Star, User } from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
-import { useAuthStore } from '@/stores/authStore';
+import { useAuthStore, xpForNextLevel, xpForLevel } from '@/stores/authStore';
 
 export default function Landing() {
   const navigate = useNavigate();
-  const { setGuestName, guestName } = useAuthStore();
+  const { setGuestName, guestName, stats, isGuest } = useAuthStore();
   const [playerName, setPlayerName] = useState(guestName || '');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
 
-  const handlePlayGuest = () => {
+  const handlePlay = (destination: string) => {
     if (!playerName.trim()) {
       setError('Entre ton pseudo pour jouer');
       return;
@@ -22,7 +22,7 @@ export default function Landing() {
       return;
     }
     setGuestName(playerName.trim());
-    navigate('/lobby');
+    navigate(destination);
   };
 
   const handleJoinRoom = () => {
@@ -45,14 +45,14 @@ export default function Landing() {
       description: 'Joue en 3 secondes sans inscription',
     },
     {
-      icon: <Users className="w-6 h-6" />,
-      title: 'Multijoueur',
-      description: 'Defie tes amis en temps reel',
+      icon: <Star className="w-6 h-6" />,
+      title: 'Progression',
+      description: 'Gagne de l\'XP et monte en niveau',
     },
     {
       icon: <Trophy className="w-6 h-6" />,
-      title: 'Progression',
-      description: 'Debloque des badges et monte en niveau',
+      title: 'Classement',
+      description: 'Compare ton score avec tes amis',
     },
   ];
 
@@ -86,6 +86,30 @@ export default function Landing() {
           >
             <Card className="max-w-md mx-auto">
               <div className="space-y-4">
+                {/* Show stats if returning player */}
+                {isGuest && stats.gamesPlayed > 0 && (
+                  <div className="bg-white/5 rounded-xl p-4 mb-2">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center">
+                        <User className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">{guestName}</p>
+                        <p className="text-sm text-neutral-400">Niveau {stats.level}</p>
+                      </div>
+                    </div>
+                    <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-primary-500 to-accent-500"
+                        style={{
+                          width: `${((stats.xp - xpForLevel(stats.level)) / (xpForNextLevel(stats.level) - xpForLevel(stats.level))) * 100}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1">{stats.xp} XP</p>
+                  </div>
+                )}
+
                 <Input
                   placeholder="Ton pseudo"
                   value={playerName}
@@ -98,9 +122,16 @@ export default function Landing() {
 
                 {error && <p className="text-red-400 text-sm">{error}</p>}
 
-                <Button onClick={handlePlayGuest} className="w-full" size="lg">
-                  Jouer maintenant
-                  <ArrowRight className="w-5 h-5" />
+                {/* Mode Solo - Primary action */}
+                <Button onClick={() => handlePlay('/solo')} className="w-full" size="lg">
+                  <Star className="w-5 h-5" />
+                  Mode Solo
+                </Button>
+
+                {/* Multiplayer */}
+                <Button onClick={() => handlePlay('/lobby')} variant="secondary" className="w-full">
+                  <Users className="w-5 h-5" />
+                  Multijoueur
                 </Button>
 
                 <div className="relative">
@@ -108,7 +139,7 @@ export default function Landing() {
                     <div className="w-full border-t border-white/10"></div>
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-dark-secondary text-neutral-500">ou</span>
+                    <span className="px-4 bg-dark-secondary text-neutral-500">ou rejoindre</span>
                   </div>
                 </div>
 

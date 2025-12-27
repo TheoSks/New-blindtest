@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Copy, Check, Users, Crown, Play, ArrowLeft, Share2 } from 'lucide-react';
+import { Copy, Check, Users, Crown, Play, ArrowLeft, Share2, AlertCircle } from 'lucide-react';
 import { Button, Card } from '@/components/ui';
 import { useAuthStore } from '@/stores/authStore';
 import { useAbly } from '@/hooks/useAbly';
@@ -16,15 +16,16 @@ export default function Room() {
   const { code } = useParams<{ code: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { guestName, isAuthenticated, user } = useAuthStore();
+  const { guestName } = useAuthStore();
   const { clientId, publish, subscribe, enterPresence, leavePresence, subscribePresence, getPresence, isConnected } = useAbly();
 
   const [copied, setCopied] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost] = useState(searchParams.get('host') === 'true');
   const [isJoining, setIsJoining] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
 
-  const playerName = isAuthenticated ? user?.username : guestName;
+  const playerName = guestName;
   const channelName = `room:${code}`;
 
   useEffect(() => {
@@ -32,7 +33,23 @@ export default function Room() {
       navigate('/');
       return;
     }
-  }, [playerName, code, navigate]);
+
+    // Timeout for connection - don't wait forever
+    const timeout = setTimeout(() => {
+      if (isJoining) {
+        setConnectionError(true);
+        setIsJoining(false);
+        // Add self as player anyway
+        setPlayers([{
+          id: clientId,
+          name: playerName,
+          isHost: isHost,
+        }]);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [playerName, code, navigate, isJoining, clientId, isHost]);
 
   useEffect(() => {
     if (!isConnected || !code) return;
@@ -50,7 +67,26 @@ export default function Room() {
         name: (m.data as { name: string })?.name || m.clientId,
         isHost: (m.data as { isHost: boolean })?.isHost || false,
       }));
+
+      // Add self if not in list
+      if (!playersList.find(p => p.id === clientId)) {
+        playersList.push({
+          id: clientId,
+          name: playerName || 'Unknown',
+          isHost: isHost,
+        });
+      }
+
       setPlayers(playersList);
+      setIsJoining(false);
+      setConnectionError(false);
+    }).catch(() => {
+      // If presence fails, just add self
+      setPlayers([{
+        id: clientId,
+        name: playerName || 'Unknown',
+        isHost: isHost,
+      }]);
       setIsJoining(false);
     });
 
@@ -87,7 +123,7 @@ export default function Room() {
       unsubscribePresence();
       unsubscribeEvents();
     };
-  }, [isConnected, code, channelName, playerName, isHost, enterPresence, leavePresence, subscribePresence, getPresence, subscribe, navigate]);
+  }, [isConnected, code, channelName, playerName, isHost, clientId, enterPresence, leavePresence, subscribePresence, getPresence, subscribe, navigate]);
 
   const copyCode = async () => {
     if (code) {
@@ -118,7 +154,9 @@ export default function Room() {
   }, [publish, channelName, code, navigate]);
 
   const leaveRoom = () => {
-    leavePresence(channelName);
+    if (isConnected) {
+      leavePresence(channelName);
+    }
     navigate('/lobby');
   };
 
@@ -142,6 +180,20 @@ export default function Room() {
             Quitter
           </Button>
         </div>
+
+        {connectionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-xl flex items-center gap-3"
+          >
+            <AlertCircle className="w-5 h-5 text-yellow-500" />
+            <p className="text-yellow-200 text-sm">
+              Mode hors-ligne : le multijoueur temps reel n'est pas disponible.
+              Utilisez le Mode Solo pour jouer.
+            </p>
+          </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
