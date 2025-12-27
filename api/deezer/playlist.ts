@@ -89,18 +89,17 @@ const FRENCH_RAP_ARTISTS: { name: string; id: number }[] = [
 ];
 
 // Fetch top tracks for a French rap artist by ID
-async function fetchArtistTopTracks(artistId: number, artistName: string): Promise<DeezerTrack[]> {
+async function fetchArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
   try {
     const response = await fetch(
-      `https://api.deezer.com/artist/${artistId}/top?limit=15`
+      `https://api.deezer.com/artist/${artistId}/top?limit=20`
     );
     if (!response.ok) return [];
     const data: DeezerSearchResponse = await response.json();
 
-    // Filter to only include tracks where this artist is the main artist
+    // STRICT FILTER: Only include tracks where this artist is THE main artist (exact ID match)
     const tracks = (data.data || []).filter(track =>
-      track.artist.name.toLowerCase() === artistName.toLowerCase() ||
-      track.artist.name.toLowerCase().includes(artistName.toLowerCase())
+      track.artist.id === artistId
     );
 
     return tracks;
@@ -131,7 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Fetch tracks from multiple artists in parallel using their IDs
       const artistTracksPromises = selectedArtists.map(artist =>
-        fetchArtistTopTracks(artist.id, artist.name)
+        fetchArtistTopTracks(artist.id)
       );
       const artistTracksResults = await Promise.all(artistTracksPromises);
 
