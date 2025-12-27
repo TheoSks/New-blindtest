@@ -5,11 +5,11 @@ import { useAuthStore } from '@/stores/authStore';
 const ABLY_API_KEY = import.meta.env.VITE_ABLY_API_KEY;
 
 export function useAbly() {
-  const { guestName, user } = useAuthStore();
+  const { guestName } = useAuthStore();
   const clientRef = useRef<Ably.Realtime | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  const clientId = user?.id || guestName || `guest-${Date.now()}`;
+  const clientId = guestName || `guest-${Date.now()}`;
 
   useEffect(() => {
     if (!ABLY_API_KEY) {

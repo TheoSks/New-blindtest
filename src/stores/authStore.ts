@@ -55,7 +55,7 @@ const initialStats: PlayerStats = {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       guestName: null,
       stats: initialStats,
       isGuest: false,

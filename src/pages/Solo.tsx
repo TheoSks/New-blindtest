@@ -1,24 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, VolumeX, Send, Trophy, Clock, CheckCircle, XCircle, Home, Star, Zap } from 'lucide-react';
+import { Volume2, VolumeX, Send, Trophy, Clock, CheckCircle, XCircle, Home, Star, Zap, Music, Loader2 } from 'lucide-react';
 import { Button, Input, Card } from '@/components/ui';
 import { useAuthStore, xpForNextLevel, xpForLevel } from '@/stores/authStore';
 import { useAudio } from '@/hooks/useAudio';
-
-// Music library
-const MUSIC_LIBRARY = [
-  { id: '1', title: 'Shape of You', artist: 'Ed Sheeran', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
-  { id: '2', title: 'Blinding Lights', artist: 'The Weeknd', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
-  { id: '3', title: 'Dance Monkey', artist: 'Tones and I', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
-  { id: '4', title: 'Someone Like You', artist: 'Adele', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
-  { id: '5', title: 'Uptown Funk', artist: 'Bruno Mars', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
-  { id: '6', title: 'Hello', artist: 'Adele', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3' },
-  { id: '7', title: 'Thinking Out Loud', artist: 'Ed Sheeran', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3' },
-  { id: '8', title: 'Havana', artist: 'Camila Cabello', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3' },
-  { id: '9', title: 'Despacito', artist: 'Luis Fonsi', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3' },
-  { id: '10', title: 'Old Town Road', artist: 'Lil Nas X', previewUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3' },
-];
+import { useDeezer, DeezerTrack } from '@/hooks/useDeezer';
 
 function normalizeString(str: string): string {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '').trim();
@@ -27,11 +14,15 @@ function normalizeString(str: string): string {
 const TOTAL_ROUNDS = 5;
 const TIME_PER_ROUND = 30;
 
+// Available genres for variety
+const GENRES = ['pop', 'rock', 'hiphop', 'french', 'hits'];
+
 export default function Solo() {
   const navigate = useNavigate();
   const { guestName, stats, addXp, incrementGamesPlayed, incrementCorrectAnswers, updateBestScore, updateStreak, resetStreak } = useAuthStore();
+  const { getRandomTracks, loading: loadingTracks, error: deezerError } = useDeezer();
 
-  const [gameState, setGameState] = useState<'ready' | 'playing' | 'result' | 'finished'>('ready');
+  const [gameState, setGameState] = useState<'ready' | 'loading' | 'playing' | 'result' | 'finished'>('ready');
   const [currentRound, setCurrentRound] = useState(0);
   const [score, setScore] = useState(0);
   const [correctAnswers, setCorrectAnswers] = useState(0);
@@ -40,10 +31,11 @@ export default function Solo() {
   const [hasAnswered, setHasAnswered] = useState(false);
   const [lastResult, setLastResult] = useState<{ correct: boolean; points: number } | null>(null);
   const [isMuted, setIsMuted] = useState(false);
-  const [songs] = useState(() => [...MUSIC_LIBRARY].sort(() => Math.random() - 0.5).slice(0, TOTAL_ROUNDS));
-  const [currentSong, setCurrentSong] = useState<typeof MUSIC_LIBRARY[0] | null>(null);
+  const [songs, setSongs] = useState<DeezerTrack[]>([]);
+  const [currentSong, setCurrentSong] = useState<DeezerTrack | null>(null);
   const [xpEarned, setXpEarned] = useState(0);
   const [leveledUp, setLeveledUp] = useState(false);
+  const [selectedGenre, setSelectedGenre] = useState<string>('hits');
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roundStartTimeRef = useRef<number>(0);
@@ -64,17 +56,49 @@ export default function Solo() {
     setVolume(isMuted ? 0 : 1);
   }, [isMuted, setVolume]);
 
-  const startGame = useCallback(() => {
-    setGameState('playing');
-    setCurrentRound(1);
+  const startGame = useCallback(async () => {
+    setGameState('loading');
     setScore(0);
     setCorrectAnswers(0);
     setXpEarned(0);
     setLeveledUp(false);
     previousLevel.current = stats.level;
     resetStreak();
-    startRound(0);
-  }, [stats.level, resetStreak]);
+
+    // Fetch tracks from Deezer
+    const tracks = await getRandomTracks(TOTAL_ROUNDS, selectedGenre);
+
+    if (tracks.length === 0) {
+      // If Deezer fails, show error
+      setGameState('ready');
+      return;
+    }
+
+    setSongs(tracks);
+    setGameState('playing');
+    setCurrentRound(1);
+
+    // Start first round with fetched tracks
+    const song = tracks[0];
+    setCurrentSong(song);
+    setTimeRemaining(TIME_PER_ROUND);
+    setAnswer('');
+    setHasAnswered(false);
+    setLastResult(null);
+    roundStartTimeRef.current = Date.now();
+
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          handleTimeUp();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [stats.level, resetStreak, getRandomTracks, selectedGenre]);
 
   const startRound = useCallback((roundIndex: number) => {
     const song = songs[roundIndex];
@@ -185,6 +209,35 @@ export default function Solo() {
     if (e.key === 'Enter') handleSubmitAnswer();
   };
 
+  // Genre labels in French
+  const genreLabels: Record<string, string> = {
+    pop: 'Pop',
+    rock: 'Rock',
+    hiphop: 'Hip-Hop',
+    french: 'Francais',
+    hits: 'Hits',
+  };
+
+  // Loading screen
+  if (gameState === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center mb-4 animate-pulse">
+            <Music className="w-10 h-10 text-white" />
+          </div>
+          <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-primary-400" />
+          <p className="text-neutral-400">Chargement des musiques...</p>
+          <p className="text-neutral-500 text-sm mt-2">Powered by Deezer</p>
+        </motion.div>
+      </div>
+    );
+  }
+
   // Ready screen
   if (gameState === 'ready') {
     return (
@@ -203,6 +256,33 @@ export default function Solo() {
               <p className="text-neutral-400">
                 {TOTAL_ROUNDS} chansons, {TIME_PER_ROUND}s par manche
               </p>
+            </div>
+
+            {/* Deezer error message */}
+            {deezerError && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-3 mb-4 text-red-200 text-sm">
+                Erreur de chargement. Reessayez.
+              </div>
+            )}
+
+            {/* Genre selection */}
+            <div className="mb-6">
+              <p className="text-neutral-400 text-sm mb-3">Choisis un genre</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {GENRES.map((genre) => (
+                  <button
+                    key={genre}
+                    onClick={() => setSelectedGenre(genre)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                      selectedGenre === genre
+                        ? 'bg-gradient-to-r from-primary-500 to-accent-500 text-white'
+                        : 'bg-white/10 text-neutral-300 hover:bg-white/20'
+                    }`}
+                  >
+                    {genreLabels[genre]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Player stats */}
@@ -235,9 +315,18 @@ export default function Solo() {
               </div>
             </div>
 
-            <Button onClick={startGame} className="w-full" size="lg">
-              <Zap className="w-5 h-5" />
-              Commencer
+            <Button onClick={startGame} className="w-full" size="lg" disabled={loadingTracks}>
+              {loadingTracks ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Chargement...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-5 h-5" />
+                  Commencer
+                </>
+              )}
             </Button>
 
             <Button variant="ghost" onClick={() => navigate('/')} className="w-full mt-4">
@@ -327,7 +416,18 @@ export default function Solo() {
             <h2 className="text-xl font-heading font-semibold mb-4">
               {lastResult?.correct ? 'Bien joue !' : 'Dommage !'}
             </h2>
+
+            {/* Album cover and info */}
             <div className="mb-4">
+              {currentSong.albumCover && (
+                <motion.img
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  src={currentSong.albumCover}
+                  alt={currentSong.title}
+                  className="w-32 h-32 mx-auto rounded-xl shadow-lg mb-4"
+                />
+              )}
               <p className="text-2xl font-bold text-primary-400">{currentSong.title}</p>
               <p className="text-lg text-neutral-400">{currentSong.artist}</p>
             </div>

@@ -24,11 +24,11 @@ function generateRoomCode(): string {
 
 export default function Lobby() {
   const navigate = useNavigate();
-  const { guestName, isAuthenticated, user } = useAuthStore();
+  const { guestName } = useAuthStore();
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
 
-  const playerName = isAuthenticated ? user?.username : guestName;
+  const playerName = guestName;
 
   useEffect(() => {
     if (!playerName) {
