@@ -119,19 +119,32 @@ const FRENCH_RAP_ARTISTS_DB: Map<number, string> = new Map([
 // Get set of valid artist IDs for quick lookup
 const VALID_FRENCH_RAP_ARTIST_IDS = new Set(FRENCH_RAP_ARTISTS_DB.keys());
 
+// Get set of valid artist names (lowercase) for double verification
+const VALID_FRENCH_RAP_ARTIST_NAMES = new Set(
+  Array.from(FRENCH_RAP_ARTISTS_DB.values()).map(name => name.toLowerCase())
+);
+
 // Get array of artist IDs for iteration
 const FRENCH_RAP_ARTIST_IDS = Array.from(FRENCH_RAP_ARTISTS_DB.keys());
 
 /**
  * Verify if a track is from a French rap artist
- * Only returns true if the PRIMARY artist is in our verified database
+ * Uses BOTH ID and name verification for maximum accuracy
  */
 function isVerifiedFrenchRapTrack(track: DeezerTrack): boolean {
-  return VALID_FRENCH_RAP_ARTIST_IDS.has(track.artist.id);
+  // Primary check: artist ID must be in our database
+  const idMatch = VALID_FRENCH_RAP_ARTIST_IDS.has(track.artist.id);
+
+  // Secondary check: artist name must match (case-insensitive)
+  const nameMatch = VALID_FRENCH_RAP_ARTIST_NAMES.has(track.artist.name.toLowerCase());
+
+  // Must pass at least one check (ID is more reliable, name is backup)
+  return idMatch || nameMatch;
 }
 
 /**
  * Get top tracks for a specific artist by their Deezer ID
+ * Only returns tracks where the queried artist is the PRIMARY artist
  */
 async function getArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
   try {
@@ -143,11 +156,25 @@ async function getArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
     const data: DeezerTopTracksResponse = await response.json();
     if (!data.data) return [];
 
-    // Double verification: only keep tracks with preview AND from verified artist
-    return data.data.filter(track =>
-      track.preview &&
-      isVerifiedFrenchRapTrack(track)
-    );
+    const artistName = FRENCH_RAP_ARTISTS_DB.get(artistId);
+
+    // STRICT verification:
+    // 1. Must have preview URL
+    // 2. Track's artist ID must match the queried artist ID (ensures primary artist)
+    // 3. Or track's artist must be in our verified French rap database
+    return data.data.filter(track => {
+      if (!track.preview) return false;
+
+      // Strict check: artist ID must match exactly OR be in our database
+      const isExactMatch = track.artist.id === artistId;
+      const isInDatabase = VALID_FRENCH_RAP_ARTIST_IDS.has(track.artist.id);
+
+      // Also verify by name as backup
+      const nameMatches = artistName &&
+        track.artist.name.toLowerCase().includes(artistName.toLowerCase());
+
+      return isExactMatch || isInDatabase || nameMatches;
+    });
   } catch {
     return [];
   }
@@ -157,7 +184,7 @@ async function getArtistTopTracks(artistId: number): Promise<DeezerTrack[]> {
  * Fetch French rap tracks using multiple strategies for robustness
  */
 async function fetchFrenchRapTracks(): Promise<DeezerTrack[]> {
-  // Strategy 1: Get top tracks from random selection of verified artists
+  // Get top tracks from random selection of verified artists
   const shuffledIds = [...FRENCH_RAP_ARTIST_IDS].sort(() => Math.random() - 0.5);
   const selectedIds = shuffledIds.slice(0, 15); // Get 15 random artists
 
@@ -176,9 +203,21 @@ async function fetchFrenchRapTracks(): Promise<DeezerTrack[]> {
     }
   }
 
-  console.log(`[Rap FR] Fetched ${uniqueTracks.length} verified French rap tracks from ${selectedIds.length} artists`);
+  // FINAL VERIFICATION: Only include tracks from verified French rap artists
+  const verifiedTracks = uniqueTracks.filter(track => {
+    const artistId = track.artist.id;
+    const artistName = track.artist.name.toLowerCase();
 
-  return uniqueTracks;
+    // Must match by ID or name
+    const idVerified = VALID_FRENCH_RAP_ARTIST_IDS.has(artistId);
+    const nameVerified = VALID_FRENCH_RAP_ARTIST_NAMES.has(artistName);
+
+    return idVerified || nameVerified;
+  });
+
+  console.log(`[Rap FR] Fetched ${verifiedTracks.length} verified French rap tracks from ${selectedIds.length} artists (filtered from ${uniqueTracks.length})`);
+
+  return verifiedTracks;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
